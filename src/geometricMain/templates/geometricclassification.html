@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="eng">
 	<head>
-		<title>"Radial Basis Function Neural Network"</title>
+		<title>"Geometric Classification"</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<style type="text/css">
@@ -183,12 +183,11 @@
 		</style>
 	</head>
 	<body>
-		<h3>Radial Basis Function Neural Network Testing</h3>
+		<h3>Geometric Classification</h3>
 		<nav>
 			<ul>
-				<li class="links"><a href="http://127.0.0.1:8080/speechRBFtrain">Train</a></li>
-				<li class="links"><a href="http://127.0.0.1:8080/speechRBFtest">Test</a></li>
-				<li class="links"><a href="http://127.0.0.1:8080/speechRBFdisplay">Display</a></li>
+				<li class="links"><a href="http://127.0.0.1:8080/geometricclassification">Classisfy</a></li>
+				<li class="links"><a href="http://127.0.0.1:8080/geometricdisplay">Display</a></li>
 			</ul>
 		</nav>
 		<p><b>Percent Correct/Pattern</b></p>
@@ -211,64 +210,50 @@
 				</div>
 			</div>
 			<div id="form">
-				<form action="http://127.0.0.1:8080/speechRBFtest" method="post">
+				<form action="http://127.0.0.1:8080/geometricclassification" method="post">
 					<fieldset>
-						<legend>RBF Neural Network Speech Testing Parameters</legend>
+						<legend>Geometric Classification Parameters</legend>
 						<div class="options">
-							<table>
-								<tr>
-									<td>Epochs:</td>
-									<td>{{.Epochs}}</td>
-									<td>Learning Rate:</td>
-									<td>{{.LearningRate}}</td>
-								<tr>
-									<td>Momentum:</td>
-									<td>{{.Momentum}}</td>
-									<td>Classes:</td>
-									<td>{{.Classes}}</td>
-								</tr>
-								<tr>
-									<td>Hidden Layers:</td>
-									<td>{{.HiddenLayers}}</td>
-									<td>Layer Depth:</td>
-									<td>{{.LayerDepth}}</td>
-								</tr>
-								<tr>
-									<td>FFT Size:</td>
-									<td>{{.FFTSize}}</td>
-									<td>FFT Window:</td>
-									<td>{{.FFTWindow}}</td>
-								</tr>
-								<tr>
-									<td>Delta Pitch:</td>
-									<td>{{.DelPitch}}</td>
-									<td>Delta Duration:</td>
-									<td>{{.DelDuration}}</td>
-								</tr>
-								<tr>
-									<td>Percent Voiced:</td>
-									<td>{{.PercentVoiced}}</td>
-									<td>Delta Amplitude:</td>
-									<td>{{.DelAmpl}}</td>
-								</tr>
-							</table>
+							<label for="zoomplane">Samples (50-1000)</label>
+							<input type="number" id="samples" name="samples" min="50" max="1000" />
+							<input type="checkbox" name="shiftgeometric" id="shift" value="shiftgeometric" />
+							<label for="shift">Shift Randomly</label>
 							<br />
-							<h4>Test Results</h4>
+							<label for="noiselevel">Noise Level:</label>
+							<select id="noiselevel" name="noiselevel">
+								<option value="" selected>Enter noise level</option>
+								<option value="0">0</option>
+								<option value="1">1</option>
+								<option value="2">2</option>
+								<option value="3">3</option>
+								<option value="4">4</option>
+								<option value="5">5</option>
+								<option value="6">6</option>
+								<option value="7">7</option>
+								<option value="8">8</option>
+								<option value="9">9</option>
+								<option value="10">10</option>
+							</select>
+							<br />
+							<h4>Classification Results</h4>
 							<table>
 								<tr>
 									<th>Class</th>
+									<th>Geometric</th>
 									<th>Count</th>
 									<th>Correct (%)</th>
 								</tr>
 								{{range .TestResults}}
 									<tr>
 										<td>{{.Class}}</td>
+										<td>{{.Geometric}}</td>
 										<td>{{.Count}}</td>
 										<td>{{.Correct}}</td>
 									</tr>
 								{{end}}
 								<tr>
 									<td>Totals</td>
+									<td></td>
 									<td>{{.TotalCount}}</td>
 									<td>{{.TotalCorrect}}</td>
 								</tr>

@@ -1,11 +1,17 @@
 /*
-Geometric Classification displays the internal structure of 3D geometric objects
+Geometric Classification classifies the internal structure of 3D geometric objects
 such as ellipsoids, parabloids, cubes, boxes, planes, or cones.  It slices the
 geometric objects along axial planes in the Cartesian coordinate system.
 The object can be solids as well as surfaces.
 It gives an overview of the planes in i, j, k axes along with the option
 of zooming in on a particular axial plane.  It is possible to select and
 view particular planes in the geometric object with different step sizes.
+It will classify the geometric object and display the results.  It does this
+by comparing the noisy test samples that are displaced randomly in space with
+references of the geometric objects that are noise free and centered.  The metrics
+are mass sums of the rows and columns of plane in each axes in the Cartesian
+coordinate system.  The least square error determines how the sample is classified.
+The difference between the reference class mass sums and the test sample is the error.
 */
 
 package main
@@ -50,9 +56,10 @@ const (
 
 // test statistics that are tabulated in HTML
 type Results struct {
-	Class   string // int
-	Correct string // int      percent correct
-	Count   string // int      number of training examples in the class
+	Class     string // int
+	Geometric string //name of geometric object
+	Correct   string // int      percent correct
+	Count     string // int      number of training examples in the class
 }
 
 // Type to contain all the HTML template actions
@@ -70,8 +77,8 @@ type PlotT struct {
 }
 
 type PlaneMass struct {
-	row [50]int
-	col [50]int
+	row [planeDim]int
+	col [planeDim]int
 }
 
 type PlaneDim struct {
@@ -126,7 +133,7 @@ var (
 	tmplGeometricDisplay        *template.Template
 	tmplGeometricClassification *template.Template
 	// 3D geometric objects that can be created and classified
-	geometricObjects = map[int]string{
+	geometricObjects = []string{
 		0:  "ellipsoidsurface",
 		1:  "ellipsoidsolid",
 		2:  "plane",
@@ -481,9 +488,10 @@ func (geo *Geometric) tabulateTestResults() error {
 			}
 		} else {
 			geo.plot.TestResults[i] = Results{
-				Class:   strconv.Itoa(i),
-				Count:   strconv.Itoa(classCount),
-				Correct: "0",
+				Class:     strconv.Itoa(i),
+				Geometric: geometricObjects[i],
+				Count:     strconv.Itoa(classCount),
+				Correct:   "0",
 			}
 		}
 	}
@@ -1018,7 +1026,7 @@ func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErr
 		// send the normalized min square error to caller
 		planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
 	default:
-
+		fmt.Printf("invalid axis chosen: %d\n", axis)
 	}
 }
 
@@ -1057,19 +1065,50 @@ func (geo *Geometric) classifyGeometric() error {
 		ngeometricObj := rand.Intn(classes)
 		geometricObj := geometricObjects[ngeometricObj]
 		geometricObject.CreateObject(geometricObj, geo.noiseLevel, true)
+
+		// Open the geometric object file containing the densities
+		fgeometric, err := os.Open(filepath.Join(dataDir, geometricobject))
+		if err != nil {
+			fmt.Printf("Open file %s error: %v\n", geometricobject, err)
+			return fmt.Errorf("Open file %s error: %v\n", geometricobject, err.Error())
+		}
+
+		// Read the geometric object file containing the densities
+		for i := range planeDim {
+			for j := range planeDim {
+				for k := range planeDim - 1 {
+					_, err := fmt.Fscanf(fgeometric, "%d", &geo.density[i][j][k])
+					if err != nil {
+						fmt.Printf("Fscanf for densities[%d][%d][%d] error: %v\n", i, j, k, err.Error())
+						return fmt.Errorf("function Fscanf for densities[%d][%d][%d] error: %v", i, j, k, err.Error())
+					}
+				}
+				_, err := fmt.Fscanf(fgeometric, "%d\n", &geo.density[i][j][planeDim-1])
+				if err != nil {
+					fmt.Printf("Fscanf for densities[%d][%d] newline error: %v\n", i, j, err.Error())
+					return fmt.Errorf("function Fscanf for densities[%d][%d] newline error: %v", i, j, err.Error())
+				}
+			}
+		}
+		fgeometric.Close()
+
 		// loop over geometric references and open one at a time
 		for class, obj := range geometricObjects {
-			// read geometric reference mass sums into memory for this reference only
+			// read geometric reference mass sums into memory for this class reference only
 			fgeoref, err := os.Open(filepath.Join(dataDir, obj+".txt"))
 			if err != nil {
 				fmt.Printf("open %s error: %v\n", geometricObj, err.Error())
 				return fmt.Errorf("open %s error: %v", geometricObj, err.Error())
 			}
-			for j := range geo.geoRefMass {
-				for k := range geo.geoRefMass[j][:planeDim-1] {
-					fmt.Fscanf(fgeoref, "%d ", &geo.geoRefMass[j][k])
+			for axes := range geo.geoRefMass {
+				for plane := range geo.geoRefMass[axes] {
+					for m := range geo.geoRefDims[class][axes][plane].nrows {
+						fmt.Fscanf(fgeoref, "%d ", &geo.geoRefMass[axes][plane].row[m])
+					}
+					for n := range geo.geoRefDims[class][axes][plane].ncols {
+						fmt.Fscanf(fgeoref, "%d ", &geo.geoRefMass[axes][plane].col[n])
+					}
 				}
-				fmt.Fscanf(fgeoref, "%d\n", &geo.geoRefMass[j][planeDim-1])
 			}
 			// close file
 			fgeoref.Close()
@@ -1374,9 +1413,9 @@ func handleGeometricDisplay(w http.ResponseWriter, r *http.Request) {
 func main() {
 	// Set up HTTP servers with handlers for geometric classification and display
 
-	// Create HTTP handler for performing CT
+	// Create HTTP handler for performing Geometric Classification
 	http.HandleFunc(patterngeometricdisplay, handleGeometricDisplay)
-	fmt.Printf("Computed Tomography Server listening on %v.\n", addr)
+	fmt.Printf("Geometric Classification Server listening on %v.\n", addr)
 	// Create HTTP handler for testing
 	http.HandleFunc(patterngeometricclassification, handleGeometricClassification)
 	http.ListenAndServe(addr, nil)

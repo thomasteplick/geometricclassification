@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="eng">
 	<head>
-		<title>"Geometric Tomography"</title>
+		<title>"Geometric Classification"</title>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<style type="text/css">
@@ -147,7 +147,13 @@
 		</style>
 	</head>
 	<body>
-		<h3>Geometric Tomography</h3>
+		<h3>Geometric Classification</h3>
+		<nav>
+			<ul>
+				<li class="links"><a href="http://127.0.0.1:8080/geometricclassification">Classisfy</a></li>
+				<li class="links"><a href="http://127.0.0.1:8080/geometricdisplay">Display</a></li>
+			</ul>
+		</nav>
 		<p><b>{{.Domain}}</b></p>
 		<div id="outer-container">
 			<div id="{{.YlabelContainer}}">
@@ -168,9 +174,9 @@
 				</div>
 			</div>
 			<div id="form">
-				<form action="http://127.0.0.1:8080/computedtomography" method="post">
+				<form action="http://127.0.0.1:8080/geometricdisplay" method="post">
 					<fieldset>
-						<legend>Geometric Tomography Parameters</legend>
+						<legend>Geometric Display Parameters</legend>
 						<p>	
 							For a <i>New Geometric Object</i> select the geometric object.  For Zoom select
 							the <i>Zoom Axis</i> and enter the <i>Zoom Plane</i> (0-49).  For overview of the plane tomography

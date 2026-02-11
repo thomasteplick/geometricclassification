@@ -9,29 +9,126 @@ package geometricObject
 
 import (
 	"fmt"
+	"io"
 	"math"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 )
 
 const (
-	planeDim        = 50                    // plane dimension in cells in i, j, k data space
-	geometricobject = "geometricobject.txt" // 3D geometric object file containing the densities, 50x50x50
-	dataDir         = "data/"               // directory for player positions
+	planeDim         = 50                    // plane dimension in cells in i, j, k data space
+	geometricobject  = "geometricobject.txt" // 3D geometric object file containing the densities, 50x50x50
+	dataDir          = "data/"               // directory for player positions
+	geometricrefdims = "geometricrefdim.txt" // row/column dimensions of references
 )
 
 // 3D geometric object
 type GeoObject struct {
-	density [][][]byte
+	density    [][][]byte
+	noiseLevel int
+	shift      bool
+}
+
+// add noise to the density and shift the location of the geometric object
+func (geo *GeoObject) addNoiseShift() error {
+	// Save geo.density to a temp file
+	const tempfile = "tempdensity.txt"
+	ftemp, err := os.Create(filepath.Join(dataDir, tempfile))
+	if err != nil {
+		fmt.Printf("open file %s error: %v\n", tempfile, err.Error())
+		return fmt.Errorf("open file %s error: %v", tempfile, err.Error())
+	}
+	defer ftemp.Close()
+
+	for i := 0; i < planeDim; i++ {
+		for j := 0; j < planeDim; j++ {
+			for k := 0; k < planeDim; k++ {
+				fmt.Fprintf(ftemp, "%d ", geo.density[i][j][k])
+			}
+			fmt.Fprintln(ftemp)
+		}
+	}
+
+	// Rewind temp density file
+	ftemp.Seek(0, io.SeekStart)
+
+	// Clear geo.density
+	for i := 0; i < planeDim; i++ {
+		for j := 0; j < planeDim; j++ {
+			for k := 0; k < planeDim; k++ {
+				geo.density[i][j][k] = 0
+			}
+		}
+	}
+
+	// Read in density file and place in a shifted position with density noise
+	// Read the geometric object file containing the densities
+	// compute noise and shift
+	signi := 1
+	if sign := rand.IntN(2); sign > 0 {
+		signi = -1
+	}
+	signj := 1
+	if sign := rand.IntN(2); sign > 0 {
+		signj = -1
+	}
+	signk := 1
+	if sign := rand.IntN(2); sign > 0 {
+		signk = -1
+	}
+
+	ishift := signi * rand.IntN(planeDim/4)
+	jshift := signj * rand.IntN(planeDim/4)
+	kshift := signk * rand.IntN(planeDim/4)
+	noise := float64(geo.noiseLevel) * (rand.Float64() - 0.5)
+	deltaI := 0
+	deltaJ := 0
+	deltaK := 0
+	for i := range planeDim {
+		for j := range planeDim {
+			for k := range planeDim - 1 {
+				deltaI = i + ishift
+				deltaJ = j + jshift
+				deltaK = k + kshift
+				if (deltaI >= 0 && deltaI < planeDim) && (deltaJ >= 0 && deltaJ < planeDim) &&
+					(deltaK >= 0 && deltaK < planeDim) {
+					_, err := fmt.Fscanf(ftemp, "%d", &geo.density[deltaI][deltaJ][deltaK])
+					if err != nil {
+						fmt.Printf("Fscanf for densit[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
+						return fmt.Errorf("function Fscanf for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
+					}
+					// add noise
+					geo.density[deltaI][deltaJ][deltaK] += byte(noise)
+				}
+			}
+			deltaI = i + ishift
+			deltaJ = j + jshift
+			deltaK = planeDim - 1 + kshift
+			if (deltaI >= 0 && deltaI < planeDim) && (deltaJ >= 0 && deltaJ < planeDim) &&
+				(deltaK >= 0 && deltaK < planeDim) {
+				_, err := fmt.Fscanf(ftemp, "%d\n", &geo.density[deltaI][deltaJ][deltaK])
+				if err != nil {
+					fmt.Printf("Fscanf for density[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
+					return fmt.Errorf("function Fscanf for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
+				}
+				// add noise
+				geo.density[deltaI][deltaJ][deltaK] += byte(noise)
+			}
+		}
+	}
+	return nil
 }
 
 // plane, surface
 func (geo *GeoObject) createPlane() {
+
 	// choose center of plane (x1, y1, z1) = (25, 25, 25)
 	// vary x, y, in (0, 49)
 	// Normal to plane is Ai + Bj + Ck
 	// dot product: A(x-x1) + B(y-y1) + C(z-z1) = 0
-	// Ax + By + Cz = D, => D=A*x1+B*y1+C*z1
+	// Ax + By + Cz = D, => D=A*x1+B*y1+C*z1.
+
 	x1 := planeDim / 2
 	y1 := planeDim / 2
 	z1 := planeDim / 2
@@ -50,6 +147,13 @@ func (geo *GeoObject) createPlane() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // cardioid of revolution, surface
@@ -90,6 +194,11 @@ func (geo *GeoObject) createCardioidRevolution() {
 			phi += del
 		}
 		theta += del
+	}
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
 	}
 }
 
@@ -144,6 +253,13 @@ func (geo *GeoObject) createCardioidRevolutionSolid() {
 		}
 	}
 	geo.density[y1][z1][shiftx] = byte(black)
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // lemniscate of revolution, surface
@@ -193,6 +309,13 @@ func (geo *GeoObject) createLemniscateRevolution() {
 		theta += del
 	}
 	geo.density[y1][z1][x1] = black
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // lemniscate of revolution, solid with varying density
@@ -251,6 +374,13 @@ func (geo *GeoObject) createLemniscateRevolutionSolid() {
 		}
 	}
 	geo.density[y1][z1][x1] = byte(black)
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // Four-leaved rose of revolution, surface
@@ -290,6 +420,13 @@ func (geo *GeoObject) createRose4LeafRevolution() {
 		}
 		theta += del
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // Four-leaved rose of revolution, solid with varying density
@@ -340,6 +477,13 @@ func (geo *GeoObject) createRose4LeafRevolutionSolid() {
 			theta += del
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // potential well, surface, amount of work required to move from 1 to r
@@ -368,9 +512,14 @@ func (geo *GeoObject) createPotentialWell() {
 			theta += del
 		}
 	}
-}
 
-//
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
+}
 
 // elliptic cylinder, surface
 func (geo *GeoObject) createCylinder() {
@@ -396,6 +545,13 @@ func (geo *GeoObject) createCylinder() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // elliptic cylinder, solid
@@ -431,6 +587,13 @@ func (geo *GeoObject) createCylinderSolid() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // hyperbolic paraboloid, surface
@@ -473,6 +636,13 @@ func (geo *GeoObject) createHyperbolicParaboloid() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // cube, solid with decreasing density from center
@@ -496,6 +666,13 @@ func (geo *GeoObject) createCube() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // box, surface
@@ -524,6 +701,13 @@ func (geo *GeoObject) createBox() {
 			geo.density[x][y1+del][z] = black
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // ellipsoid, surface
@@ -572,6 +756,13 @@ func (geo *GeoObject) createEllipsoid() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // ellipsoid, solid with varying density
@@ -611,6 +802,13 @@ func (geo *GeoObject) createEllipsoidSolid() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // elliptic cone, surface
@@ -656,6 +854,13 @@ func (geo *GeoObject) createCone() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // elliptic cone, solid
@@ -718,6 +923,13 @@ func (geo *GeoObject) createConeSolid() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // elliptic parabaloid, surface
@@ -764,6 +976,13 @@ func (geo *GeoObject) createParaboloid() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
 // create a solid paraboloid with varying density
@@ -827,17 +1046,389 @@ func (geo *GeoObject) createParaboloidSolid() {
 			}
 		}
 	}
+
+	// add noise to this geometric object and shift its location
+	if geo.shift {
+		// find maximum shift and choose random value in that range
+		geo.addNoiseShift()
+	}
+
 }
 
-// geometric references consisting of row/column masses and dimensions
-func (geo *GeoObject) createGeometricReferences() {
+// create geometric references consisting of plane row/column mass sums and plane dimensions
+func (geo *GeoObject) createGeometricReferences() error {
 
+	type Geo func()
+
+	geometricObjects := []string{
+		0:  "ellipsoidsurface",
+		1:  "ellipsoidsolid",
+		2:  "plane",
+		3:  "paraboloid",
+		4:  "paraboloidsolid",
+		5:  "cube",
+		6:  "cone",
+		7:  "conesolid",
+		8:  "box",
+		9:  "hyperbolicparaboloid",
+		10: "cylindersurface",
+		11: "cylindersolid",
+		12: "potentialwell",
+		13: "cardioidrevolution",
+		14: "cardioidrevolutionsolid",
+		15: "lemniscaterevolution",
+		16: "lemniscaterevolutionsolid",
+		17: "rose4leafrevolution",
+		18: "rose4leafrevolutionsolid",
+	}
+
+	// functions that construct geometric objects
+	geofunc := []Geo{geo.createEllipsoid, geo.createEllipsoidSolid, geo.createPlane,
+		geo.createParaboloid, geo.createParaboloidSolid, geo.createCube, geo.createCone,
+		geo.createConeSolid, geo.createBox, geo.createHyperbolicParaboloid,
+		geo.createCylinder, geo.createCylinderSolid, geo.createPotentialWell,
+		geo.createCardioidRevolution, geo.createCardioidRevolutionSolid,
+		geo.createLemniscateRevolution, geo.createLemniscateRevolutionSolid,
+		geo.createRose4LeafRevolution, geo.createRose4LeafRevolutionSolid,
+	}
+
+	// create geometric references dimension file
+	fdim, err := os.Create(filepath.Join(dataDir, geometricrefdims))
+	if err != nil {
+		fmt.Printf("create file %s error: %v\n", geometricrefdims, err.Error())
+		return fmt.Errorf("create file %s error: %v", geometricrefdims, err.Error())
+	}
+	defer fdim.Close()
+	// loop over classes
+	for i, class := range geometricObjects {
+		//   create class specific file for the mass sums in each axis, plane, and row/column
+		fclass, err := os.Create(filepath.Join(dataDir, class+".txt"))
+		if err != nil {
+			fmt.Printf("create file %s error: %v\n", class+".txt", err.Error())
+			return fmt.Errorf("create file %s error: %v", class+".txt", err.Error())
+		}
+
+		// clear the previous densities
+		for j := range geo.density {
+			for k := range geo.density[j] {
+				for m := range geo.density[j][k] {
+					geo.density[j][k][m] = 0
+				}
+			}
+		}
+
+		// construct this class but don't save to disk
+		geofunc[i]()
+
+		var (
+			rowFirst, rowLast, colFirst, colLast int
+			sum                                  int = 0
+		)
+
+		// ---------------------- axes = i ------------------------
+		// loop over planes
+		// For each plane, find the extent of the density
+		// in the two axes, then find the mass for the rows and columns
+		// inside these bounds.
+		for plane := range planeDim {
+			// find the row bounds
+			// loop over rows from first to last
+			for row := range planeDim {
+				sum = 0
+				for col := range planeDim {
+					// sum the row densities, if non-zero, save this row number, break
+					sum += int(geo.density[plane][row][col])
+				}
+				if sum > 0 {
+					rowFirst = row
+					break
+				}
+			}
+			// loop over rows from last to first
+			for row := planeDim - 1; row >= 0; row-- {
+				sum = 0
+				for col := range planeDim {
+					// sum the densities, if non-zero, save this row number, break
+					sum += int(geo.density[plane][row][col])
+				}
+				if sum > 0 {
+					rowLast = row
+					break
+				}
+			}
+
+			// find the column bounds
+			// loop over cols from first to last
+			for col := range planeDim {
+				sum = 0
+				for row := range planeDim {
+					//sum the col densities, if non-zero, save this col number, break
+					sum += int(geo.density[plane][row][col])
+				}
+				if sum > 0 {
+					colFirst = col
+					break
+				}
+			}
+
+			// loop over cols from last to first
+			for col := planeDim - 1; col >= 0; col-- {
+				sum = 0
+				for row := range planeDim {
+					//sum the col densities, if non-zero, save this col number, break
+					sum += int(geo.density[plane][row][col])
+				}
+				if sum > 0 {
+					colLast = col
+					break
+				}
+			}
+
+			nrows := rowLast - rowFirst + 1
+			ncols := colLast - colFirst + 1
+			// write nrows and ncols to geometricrefdim on one line with space between
+			fmt.Fprintf(fdim, "%d %d\n", nrows, ncols)
+
+			// loop from first non-zero row sum to last row non-zero sum
+			for row := rowFirst; row < rowLast; row++ {
+				sum := 0
+				for col := range planeDim {
+					// sum each row density and write to file geometricrefmass on the same line with a space between
+					sum += int(geo.density[plane][row][col])
+				}
+				fmt.Fprintf(fclass, "%d ", sum)
+			}
+			sum = 0
+			for col := range planeDim {
+				// sum each row density and write to file geometricrefmass on the same line with a space between
+				sum += int(geo.density[plane][rowLast][col])
+			}
+			fmt.Fprintf(fclass, "%d\n", sum)
+
+			// loop from first non-zero col sum to last non-zeron col sum
+			for col := colFirst; col < colLast; col++ {
+				sum = 0
+				for row := range planeDim {
+					// sum each col density and write to file geometricrefmass on the same line with a space between
+					sum += int(geo.density[plane][row][col])
+				}
+				fmt.Fprintf(fclass, "%d ", sum)
+			}
+			sum = 0
+			for row := range planeDim {
+				// sum each col density and write to file geometricrefmass on the same line with a space between
+				sum += int(geo.density[plane][row][colLast])
+			}
+			fmt.Fprintf(fclass, "%d ", sum)
+		}
+
+		// -------------------------- axes = j -----------------------------
+		// loop over planes
+		// For each plane, find the extent of the density
+		// in the two axes, then find the mass for the rows and columns
+		// inside these bounds.
+		for plane := range planeDim {
+			// find the row bounds
+			// loop over rows from first to last
+			for row := range planeDim {
+				sum = 0
+				for col := range planeDim {
+					// sum the row densities, if non-zero, save this row number, break
+					sum += int(geo.density[row][plane][col])
+				}
+				if sum > 0 {
+					rowFirst = row
+					break
+				}
+			}
+			// loop over rows from last to first
+			for row := planeDim - 1; row >= 0; row-- {
+				sum = 0
+				for col := range planeDim {
+					// sum the densities, if non-zero, save this row number, break
+					sum += int(geo.density[row][plane][col])
+				}
+				if sum > 0 {
+					rowLast = row
+					break
+				}
+			}
+
+			// find the column bounds
+			// loop over cols from first to last
+			for col := range planeDim {
+				sum = 0
+				for row := range planeDim {
+					//sum the col densities, if non-zero, save this col number, break
+					sum += int(geo.density[row][plane][col])
+				}
+				if sum > 0 {
+					colFirst = col
+					break
+				}
+			}
+
+			// loop over cols from last to first
+			for col := planeDim - 1; col >= 0; col-- {
+				sum = 0
+				for row := range planeDim {
+					//sum the col densities, if non-zero, save this col number, break
+					sum += int(geo.density[row][plane][col])
+				}
+				if sum > 0 {
+					colLast = col
+					break
+				}
+			}
+
+			nrows := rowLast - rowFirst + 1
+			ncols := colLast - colFirst + 1
+			// write nrows and ncols to geometricrefdim on one line with space between
+			fmt.Fprintf(fdim, "%d %d\n", nrows, ncols)
+
+			// loop from first non-zero row sum to last row non-zero sum
+			for row := rowFirst; row < rowLast; row++ {
+				sum := 0
+				for col := range planeDim {
+					// sum each row density and write to file geometricrefmass on the same line with a space between
+					sum += int(geo.density[row][plane][col])
+				}
+				fmt.Fprintf(fclass, "%d ", sum)
+			}
+			sum = 0
+			for col := range planeDim {
+				// sum each row density and write to file geometricrefmass on the same line with a space between
+				sum += int(geo.density[rowLast][plane][col])
+			}
+			fmt.Fprintf(fclass, "%d\n", sum)
+
+			// loop from first non-zero col sum to last non-zeron col sum
+			for col := colFirst; col < colLast; col++ {
+				sum = 0
+				for row := range planeDim {
+					// sum each col density and write to file geometricrefmass on the same line with a space between
+					sum += int(geo.density[row][plane][col])
+				}
+				fmt.Fprintf(fclass, "%d ", sum)
+			}
+			sum = 0
+			for row := range planeDim {
+				// sum each col density and write to file geometricrefmass on the same line with a space between
+				sum += int(geo.density[row][plane][colLast])
+			}
+			fmt.Fprintf(fclass, "%d ", sum)
+		}
+
+		// -------------------------- axes = k --------------------------------------
+		// loop over planes
+		// For each plane, find the extent of the density
+		// in the two axes, then find the mass for the rows and columns
+		// inside these bounds.
+		for plane := range planeDim {
+			// find the row bounds
+			// loop over rows from first to last
+			for row := range planeDim {
+				sum = 0
+				for col := range planeDim {
+					// sum the row densities, if non-zero, save this row number, break
+					sum += int(geo.density[row][col][plane])
+				}
+				if sum > 0 {
+					rowFirst = row
+					break
+				}
+			}
+			// loop over rows from last to first
+			for row := planeDim - 1; row >= 0; row-- {
+				sum = 0
+				for col := range planeDim {
+					// sum the densities, if non-zero, save this row number, break
+					sum += int(geo.density[row][col][plane])
+				}
+				if sum > 0 {
+					rowLast = row
+					break
+				}
+			}
+
+			// find the column bounds
+			// loop over cols from first to last
+			for col := range planeDim {
+				sum = 0
+				for row := range planeDim {
+					//sum the col densities, if non-zero, save this col number, break
+					sum += int(geo.density[row][col][plane])
+				}
+				if sum > 0 {
+					colFirst = col
+					break
+				}
+			}
+
+			// loop over cols from last to first
+			for col := planeDim - 1; col >= 0; col-- {
+				sum = 0
+				for row := range planeDim {
+					//sum the col densities, if non-zero, save this col number, break
+					sum += int(geo.density[row][col][plane])
+				}
+				if sum > 0 {
+					colLast = col
+					break
+				}
+			}
+
+			nrows := rowLast - rowFirst + 1
+			ncols := colLast - colFirst + 1
+			// write nrows and ncols to geometricrefdim on one line with space between
+			fmt.Fprintf(fdim, "%d %d\n", nrows, ncols)
+
+			// loop from first non-zero row sum to last row non-zero sum
+			for row := rowFirst; row < rowLast; row++ {
+				sum := 0
+				for col := range planeDim {
+					// sum each row density and write to file geometricrefmass on the same line with a space between
+					sum += int(geo.density[row][col][plane])
+				}
+				fmt.Fprintf(fclass, "%d ", sum)
+			}
+			sum = 0
+			for col := range planeDim {
+				// sum each row density and write to file geometricrefmass on the same line with a space between
+				sum += int(geo.density[rowLast][col][plane])
+			}
+			fmt.Fprintf(fclass, "%d\n", sum)
+
+			// loop from first non-zero col sum to last non-zeron col sum
+			for col := colFirst; col < colLast; col++ {
+				sum = 0
+				for row := range planeDim {
+					// sum each col density and write to file geometricrefmass on the same line with a space between
+					sum += int(geo.density[plane][row][col])
+				}
+				fmt.Fprintf(fclass, "%d ", sum)
+			}
+			sum = 0
+			for row := range planeDim {
+				// sum each col density and write to file geometricrefmass on the same line with a space between
+				sum += int(geo.density[row][colLast][plane])
+			}
+			fmt.Fprintf(fclass, "%d ", sum)
+		}
+
+		fclass.Close()
+	}
+	return nil
 }
 
 // create a geometric 3D object using its densities
 func CreateObject(geometricObject string, noiseLevel int, shift bool) error {
 	// create a GeoObject instance
-	geo := GeoObject{density: make([][][]byte, planeDim)}
+	geo := GeoObject{
+		density:    make([][][]byte, planeDim),
+		noiseLevel: noiseLevel,
+		shift:      shift,
+	}
 	for i := range geo.density {
 		geo.density[i] = make([][]byte, planeDim)
 		for j := range geo.density[i] {
@@ -886,26 +1477,31 @@ func CreateObject(geometricObject string, noiseLevel int, shift bool) error {
 	case "rose4leafrevolutionsolid":
 		geo.createRose4LeafRevolutionSolid()
 	case "geometricreferences":
-		geo.createGeometricReferences()
+		err := geo.createGeometricReferences()
+		if err != nil {
+			return fmt.Errorf("createGeometricReferences error: %v", err.Error())
+		}
 	default:
 		fmt.Printf("create geometric object unknown case: '%s'\n", geometricObject)
 		return fmt.Errorf("create geometric object unknown case %s", geometricObject)
 	}
 
-	// Save geometric object
-	f, err := os.Create(filepath.Join(dataDir, geometricobject))
-	if err != nil {
-		fmt.Printf("create %s error: %v\n", geometricObject, err.Error())
-		return fmt.Errorf("create %s error: %v", geometricObject, err.Error())
-	}
-	defer f.Close()
+	if shift == true {
+		// Save geometric object
+		f, err := os.Create(filepath.Join(dataDir, geometricobject))
+		if err != nil {
+			fmt.Printf("create %s error: %v\n", geometricObject, err.Error())
+			return fmt.Errorf("create %s error: %v", geometricObject, err.Error())
+		}
+		defer f.Close()
 
-	for i := 0; i < planeDim; i++ {
-		for j := 0; j < planeDim; j++ {
-			for k := 0; k < planeDim; k++ {
-				fmt.Fprintf(f, "%d ", geo.density[i][j][k])
+		for i := 0; i < planeDim; i++ {
+			for j := 0; j < planeDim; j++ {
+				for k := 0; k < planeDim; k++ {
+					fmt.Fprintf(f, "%d ", geo.density[i][j][k])
+				}
+				fmt.Fprintln(f)
 			}
-			fmt.Fprintln(f)
 		}
 	}
 	return nil
