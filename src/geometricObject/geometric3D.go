@@ -81,10 +81,10 @@ func (geo *GeoObject) addNoiseShift() error {
 	ishift := signi * rand.IntN(planeDim/4)
 	jshift := signj * rand.IntN(planeDim/4)
 	kshift := signk * rand.IntN(planeDim/4)
-	noise := float64(geo.noiseLevel) * (rand.Float64() - 0.5)
 	deltaI := 0
 	deltaJ := 0
 	deltaK := 0
+	junk := 0
 	for i := range planeDim {
 		for j := range planeDim {
 			for k := range planeDim - 1 {
@@ -95,11 +95,15 @@ func (geo *GeoObject) addNoiseShift() error {
 					(deltaK >= 0 && deltaK < planeDim) {
 					_, err := fmt.Fscanf(ftemp, "%d", &geo.density[deltaI][deltaJ][deltaK])
 					if err != nil {
-						fmt.Printf("Fscanf for densit[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
+						fmt.Printf("Fscanf for density[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
 						return fmt.Errorf("function Fscanf for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
 					}
-					// add noise
-					geo.density[deltaI][deltaJ][deltaK] += byte(noise)
+					// add noise, (+/-)noiseLevel/2
+					noise := float64(geo.noiseLevel) * (rand.Float64() - 0.5)
+					try := float64(geo.density[deltaI][deltaJ][deltaK]) + noise
+					geo.density[deltaI][deltaJ][deltaK] = byte(min(max(0, try), 9.0))
+				} else {
+					fmt.Fscanf(ftemp, "%d", &junk)
 				}
 			}
 			deltaI = i + ishift
@@ -112,8 +116,12 @@ func (geo *GeoObject) addNoiseShift() error {
 					fmt.Printf("Fscanf for density[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
 					return fmt.Errorf("function Fscanf for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
 				}
-				// add noise
-				geo.density[deltaI][deltaJ][deltaK] += byte(noise)
+				// add noise, (+/-)noiseLevel/2
+				noise := float64(geo.noiseLevel) * (rand.Float64() - 0.5)
+				try := float64(geo.density[deltaI][deltaJ][deltaK]) + noise
+				geo.density[deltaI][deltaJ][deltaK] = byte(min(max(0, try), 9.0))
+			} else {
+				fmt.Fscanf(ftemp, "%d\n", &junk)
 			}
 		}
 	}
@@ -122,27 +130,29 @@ func (geo *GeoObject) addNoiseShift() error {
 
 // plane, surface
 func (geo *GeoObject) createPlane() {
-
 	// choose center of plane (x1, y1, z1) = (25, 25, 25)
 	// vary x, y, in (0, 49)
 	// Normal to plane is Ai + Bj + Ck
 	// dot product: A(x-x1) + B(y-y1) + C(z-z1) = 0
-	// Ax + By + Cz = D, => D=A*x1+B*y1+C*z1.
-
+	// Ax + By + Cz = D, => D=A*x1+B*y1+C*z1
 	x1 := planeDim / 2
 	y1 := planeDim / 2
 	z1 := planeDim / 2
 	A := 2
 	B := 3
 	C := 4
+	a := x1 / 2
+	b := y1 / 2
+	c := z1 / 2
+
 	D := A*x1 + B*y1 + C*z1
 	var black byte = 9
 
-	for x := 0; x < planeDim; x++ {
-		for y := 0; y < planeDim; y++ {
+	for x := x1 - a; x < x1+a; x++ {
+		for y := y1 - b; y < y1+b; y++ {
 			z := (D - A*x - B*y) / C
 			// this point is inside the data space and in the plane
-			if z >= 0 && z < planeDim {
+			if z >= z1-c && z < z1+c {
 				geo.density[x][y][z] = black
 			}
 		}
@@ -151,7 +161,10 @@ func (geo *GeoObject) createPlane() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
 
 }
@@ -198,7 +211,10 @@ func (geo *GeoObject) createCardioidRevolution() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
 }
 
@@ -257,7 +273,10 @@ func (geo *GeoObject) createCardioidRevolutionSolid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
 
 }
@@ -313,7 +332,10 @@ func (geo *GeoObject) createLemniscateRevolution() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
 
 }
@@ -378,9 +400,11 @@ func (geo *GeoObject) createLemniscateRevolutionSolid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // Four-leaved rose of revolution, surface
@@ -424,9 +448,11 @@ func (geo *GeoObject) createRose4LeafRevolution() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // Four-leaved rose of revolution, solid with varying density
@@ -481,9 +507,11 @@ func (geo *GeoObject) createRose4LeafRevolutionSolid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // potential well, surface, amount of work required to move from 1 to r
@@ -516,9 +544,11 @@ func (geo *GeoObject) createPotentialWell() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // elliptic cylinder, surface
@@ -549,7 +579,10 @@ func (geo *GeoObject) createCylinder() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
 
 }
@@ -591,9 +624,11 @@ func (geo *GeoObject) createCylinderSolid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // hyperbolic paraboloid, surface
@@ -640,9 +675,11 @@ func (geo *GeoObject) createHyperbolicParaboloid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // cube, solid with decreasing density from center
@@ -670,7 +707,10 @@ func (geo *GeoObject) createCube() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
 
 }
@@ -705,9 +745,11 @@ func (geo *GeoObject) createBox() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // ellipsoid, surface
@@ -760,9 +802,11 @@ func (geo *GeoObject) createEllipsoid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // ellipsoid, solid with varying density
@@ -806,9 +850,11 @@ func (geo *GeoObject) createEllipsoidSolid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // elliptic cone, surface
@@ -858,9 +904,11 @@ func (geo *GeoObject) createCone() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // elliptic cone, solid
@@ -927,9 +975,11 @@ func (geo *GeoObject) createConeSolid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // elliptic parabaloid, surface
@@ -980,9 +1030,11 @@ func (geo *GeoObject) createParaboloid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // create a solid paraboloid with varying density
@@ -1050,9 +1102,11 @@ func (geo *GeoObject) createParaboloidSolid() {
 	// add noise to this geometric object and shift its location
 	if geo.shift {
 		// find maximum shift and choose random value in that range
-		geo.addNoiseShift()
+		err := geo.addNoiseShift()
+		if err != nil {
+			fmt.Printf("addNoiseShift error: %v\n", err.Error())
+		}
 	}
-
 }
 
 // create geometric references consisting of plane row/column mass sums and plane dimensions
@@ -1486,23 +1540,22 @@ func CreateObject(geometricObject string, noiseLevel int, shift bool) error {
 		return fmt.Errorf("create geometric object unknown case %s", geometricObject)
 	}
 
-	if shift == true {
-		// Save geometric object
-		f, err := os.Create(filepath.Join(dataDir, geometricobject))
-		if err != nil {
-			fmt.Printf("create %s error: %v\n", geometricObject, err.Error())
-			return fmt.Errorf("create %s error: %v", geometricObject, err.Error())
-		}
-		defer f.Close()
+	// Save geometric object
+	f, err := os.Create(filepath.Join(dataDir, geometricobject))
+	if err != nil {
+		fmt.Printf("create %s error: %v\n", geometricObject, err.Error())
+		return fmt.Errorf("create %s error: %v", geometricObject, err.Error())
+	}
+	defer f.Close()
 
-		for i := 0; i < planeDim; i++ {
-			for j := 0; j < planeDim; j++ {
-				for k := 0; k < planeDim; k++ {
-					fmt.Fprintf(f, "%d ", geo.density[i][j][k])
-				}
-				fmt.Fprintln(f)
+	for i := 0; i < planeDim; i++ {
+		for j := 0; j < planeDim; j++ {
+			for k := 0; k < planeDim; k++ {
+				fmt.Fprintf(f, "%d ", geo.density[i][j][k])
 			}
+			fmt.Fprintln(f)
 		}
 	}
+
 	return nil
 }

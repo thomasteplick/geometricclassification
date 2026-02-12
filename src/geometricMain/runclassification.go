@@ -323,8 +323,8 @@ func newGeometricDisplay(r *http.Request, plot *PlotT, f *os.File) (*Geometric, 
 			}
 			_, err := fmt.Fscanf(f, "%d\n", &densities[i][j][planeDim-1])
 			if err != nil {
-				fmt.Printf("Fscanf for densities[%d][%d] newline error: %v\n", i, j, err.Error())
-				return nil, fmt.Errorf("function Fscanf for densities[%d][%d] newline error: %v", i, j, err.Error())
+				fmt.Printf("Fscanf for densities[%d][%d][%d] newline error: %v\n", i, j, planeDim-1, err.Error())
+				return nil, fmt.Errorf("function Fscanf for densities[%d][%d][%d] newline error: %v", i, j, planeDim-1, err.Error())
 			}
 		}
 	}
