@@ -1175,8 +1175,11 @@ func (geo *GeoObject) createGeometricReferences() error {
 		geofunc[i]()
 
 		var (
-			rowFirst, rowLast, colFirst, colLast int
-			sum                                  int = 0
+			rowFirst = planeDim
+			rowLast  = 0
+			colFirst = planeDim
+			colLast  = 0
+			sum      = 0
 		)
 
 		// ---------------------- axes = i ------------------------
@@ -1184,9 +1187,11 @@ func (geo *GeoObject) createGeometricReferences() error {
 		// For each plane, find the extent of the density
 		// in the two axes, then find the mass for the rows and columns
 		// inside these bounds.
+	planeLoopI:
 		for plane := range planeDim {
 			// find the row bounds
 			// loop over rows from first to last
+			rowFirst = planeDim
 			for row := range planeDim {
 				sum = 0
 				for col := range planeDim {
@@ -1198,6 +1203,16 @@ func (geo *GeoObject) createGeometricReferences() error {
 					break
 				}
 			}
+
+			// check if mass in this plane, if no mass go to next plane
+			if rowFirst == planeDim {
+				nrows := 0
+				ncols := 0
+				// write nrows and ncols to geometricrefdim on one line with space between
+				fmt.Fprintf(fdim, "%d %d\n", nrows, ncols)
+				continue planeLoopI
+			}
+
 			// loop over rows from last to first
 			for row := planeDim - 1; row >= 0; row-- {
 				sum = 0
@@ -1259,7 +1274,7 @@ func (geo *GeoObject) createGeometricReferences() error {
 			}
 			fmt.Fprintf(fclass, "%d\n", sum)
 
-			// loop from first non-zero col sum to last non-zeron col sum
+			// loop from first non-zero col sum to last non-zero col sum
 			for col := colFirst; col < colLast; col++ {
 				sum = 0
 				for row := range planeDim {
@@ -1273,7 +1288,7 @@ func (geo *GeoObject) createGeometricReferences() error {
 				// sum each col density and write to file geometricrefmass on the same line with a space between
 				sum += int(geo.density[plane][row][colLast])
 			}
-			fmt.Fprintf(fclass, "%d ", sum)
+			fmt.Fprintf(fclass, "%d\n", sum)
 		}
 
 		// -------------------------- axes = j -----------------------------
@@ -1281,9 +1296,11 @@ func (geo *GeoObject) createGeometricReferences() error {
 		// For each plane, find the extent of the density
 		// in the two axes, then find the mass for the rows and columns
 		// inside these bounds.
+	planeLoopJ:
 		for plane := range planeDim {
 			// find the row bounds
 			// loop over rows from first to last
+			rowFirst = planeDim
 			for row := range planeDim {
 				sum = 0
 				for col := range planeDim {
@@ -1295,6 +1312,16 @@ func (geo *GeoObject) createGeometricReferences() error {
 					break
 				}
 			}
+
+			// check if mass in this plane, if no mass go to next plane
+			if rowFirst == planeDim {
+				nrows := 0
+				ncols := 0
+				// write nrows and ncols to geometricrefdim on one line with space between
+				fmt.Fprintf(fdim, "%d %d\n", nrows, ncols)
+				continue planeLoopJ
+			}
+
 			// loop over rows from last to first
 			for row := planeDim - 1; row >= 0; row-- {
 				sum = 0
@@ -1370,7 +1397,7 @@ func (geo *GeoObject) createGeometricReferences() error {
 				// sum each col density and write to file geometricrefmass on the same line with a space between
 				sum += int(geo.density[row][plane][colLast])
 			}
-			fmt.Fprintf(fclass, "%d ", sum)
+			fmt.Fprintf(fclass, "%d\n", sum)
 		}
 
 		// -------------------------- axes = k --------------------------------------
@@ -1378,9 +1405,11 @@ func (geo *GeoObject) createGeometricReferences() error {
 		// For each plane, find the extent of the density
 		// in the two axes, then find the mass for the rows and columns
 		// inside these bounds.
+	planeLoopK:
 		for plane := range planeDim {
 			// find the row bounds
 			// loop over rows from first to last
+			rowFirst = planeDim
 			for row := range planeDim {
 				sum = 0
 				for col := range planeDim {
@@ -1392,6 +1421,16 @@ func (geo *GeoObject) createGeometricReferences() error {
 					break
 				}
 			}
+
+			// check if mass in this plane, if no mass go to next plane
+			if rowFirst == planeDim {
+				nrows := 0
+				ncols := 0
+				// write nrows and ncols to geometricrefdim on one line with space between
+				fmt.Fprintf(fdim, "%d %d\n", nrows, ncols)
+				continue planeLoopK
+			}
+
 			// loop over rows from last to first
 			for row := planeDim - 1; row >= 0; row-- {
 				sum = 0
@@ -1467,10 +1506,16 @@ func (geo *GeoObject) createGeometricReferences() error {
 				// sum each col density and write to file geometricrefmass on the same line with a space between
 				sum += int(geo.density[row][colLast][plane])
 			}
-			fmt.Fprintf(fclass, "%d ", sum)
+			fmt.Fprintf(fclass, "%d\n", sum)
 		}
-
-		fclass.Close()
+		err = fclass.Sync()
+		if err != nil {
+			fmt.Printf("Sync %s error: %v\n", class+".txt", err.Error())
+		}
+		err = fclass.Close()
+		if err != nil {
+			fmt.Printf("Close %s error: %v\n", class+".txt", err.Error())
+		}
 	}
 	return nil
 }

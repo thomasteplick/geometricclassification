@@ -40,6 +40,8 @@ const (
 	xlabelsZoom                    = 11                         // # labels on x axis in zoom
 	ylabelsZoom                    = 11                         // # labels on y axis in zoom
 	ylabelsOverview                = 3                          // # labels on y axis in overview
+	xlabelsClass                   = 11                         // # labels on x axis in classification
+	ylabelsClass                   = 11                         // # labels on y axis in classification
 	geometricobject                = "geometricobject.txt"      // 3D geometric object file containing the densities, 50x50x50
 	geometricrefdims               = "geometricrefdim.txt"      // dimension of references
 	dataDir                        = "data/"                    // directory for geometric objects
@@ -207,7 +209,7 @@ func newGeometricClassification(r *http.Request, plot *PlotT, nsamples int) (*Ge
 		}
 	}
 
-	fdim, err := os.Open(geometricrefdims)
+	fdim, err := os.Open(filepath.Join(dataDir, geometricrefdims))
 	if err != nil {
 		fmt.Printf("open %s error: %v\n", geometricrefdims, err.Error())
 		return nil, fmt.Errorf("open %s error: %v", geometricrefdims, err.Error())
@@ -256,7 +258,7 @@ func newGeometricClassification(r *http.Request, plot *PlotT, nsamples int) (*Ge
 }
 
 // Construct a Geometric instance containing state for Display
-func newGeometricDisplay(r *http.Request, plot *PlotT, f *os.File) (*Geometric, error) {
+func newGeometricDisplay(r *http.Request, plot *PlotT, f *os.File, shift bool, noiseLevel int) (*Geometric, error) {
 
 	var (
 		planeStep   int
@@ -338,6 +340,8 @@ func newGeometricDisplay(r *http.Request, plot *PlotT, f *os.File) (*Geometric, 
 		density:     densities,
 		rotateAngle: 0,
 		rotateAxis:  "",
+		shift:       shift,
+		noiseLevel:  noiseLevel,
 	}
 	// Create density2grayscale map
 	geo.density2grayscale = [10]string{"gs0", "gs1", "gs2", "gs3", "gs4",
@@ -482,9 +486,10 @@ func (geo *Geometric) tabulateTestResults() error {
 		totalCorrect += geo.statistics.correct[i]
 		if classCount > 0 {
 			geo.plot.TestResults[i] = Results{
-				Class:   strconv.Itoa(i),
-				Count:   strconv.Itoa(classCount),
-				Correct: strconv.Itoa(geo.statistics.correct[i] * 100 / classCount),
+				Class:     strconv.Itoa(i),
+				Geometric: geometricObjects[i],
+				Count:     strconv.Itoa(classCount),
+				Correct:   strconv.Itoa(geo.statistics.correct[i] * 100 / classCount),
 			}
 		} else {
 			geo.plot.TestResults[i] = Results{
@@ -497,6 +502,8 @@ func (geo *Geometric) tabulateTestResults() error {
 	}
 	geo.plot.TotalCount = strconv.Itoa(totalCount)
 	geo.plot.TotalCorrect = strconv.Itoa(totalCorrect * 100 / totalCount)
+	geo.plot.Status = "Geometric classification results completed."
+
 	return nil
 }
 
@@ -649,6 +656,28 @@ func (geo *Geometric) insertLabels() {
 
 	// Construct the y-axis labels
 	incr = (geo.ymax - geo.ymin) / (ylabelsZoom - 1)
+	y := geo.ymin
+	for i := range geo.plot.Ylabel {
+		geo.plot.Ylabel[i] = fmt.Sprintf("%.2f", y)
+		y += incr
+	}
+}
+
+// insertLabels inserts x- an y-axis labels in the plot
+func (geo *Geometric) insertLabelsClassification() {
+	geo.plot.Xlabel = make([]string, xlabelsClass)
+	geo.plot.Ylabel = make([]string, ylabelsClass)
+	// Construct x-axis labels
+	incr := (geo.xmax - geo.xmin) / (xlabelsClass - 1)
+	x := geo.xmin
+	// First label is empty for alignment purposes
+	for i := range geo.plot.Xlabel {
+		geo.plot.Xlabel[i] = fmt.Sprintf("%.2f", x)
+		x += incr
+	}
+
+	// Construct the y-axis labels
+	incr = (geo.ymax - geo.ymin) / (ylabelsClass - 1)
 	y := geo.ymin
 	for i := range geo.plot.Ylabel {
 		geo.plot.Ylabel[i] = fmt.Sprintf("%.2f", y)
@@ -928,17 +957,31 @@ func (geo *Geometric) reloadGeometricObject(f *os.File) error {
 // get min sq error for this plane
 func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErrorChan chan<- float64) {
 
+	// send 0 error if no mass in this plane
+	if geo.geoRefDims[class][axis][plane].nrows == 0 {
+		planeErrorChan <- 0
+		return
+	}
+
 	// get the bounds (number of rows and columns) for this plane
-	rowShifts := geo.geoRefDims[class][axis][plane].nrows / 2
-	colShifts := geo.geoRefDims[class][axis][plane].ncols / 2
+	rowShifts := planeDim - geo.geoRefDims[class][axis][plane].nrows
+	colShifts := planeDim - geo.geoRefDims[class][axis][plane].ncols
 	minSqErr := math.MaxFloat64
 	// shift the reference over the sample and find the shift having the min sq error
 	// the allowable number of shifts is determined by the reference bounds
 	switch axis {
 	case 0:
+		normRow := 0.0
+		for _, dens := range geo.geoRefMass[axis][plane].row {
+			normRow += float64(dens * dens)
+		}
+		normCol := 0.0
+		for _, dens := range geo.geoRefMass[axis][plane].col {
+			normCol += float64(dens * dens)
+		}
 		for i := range rowShifts {
 			for j := range colShifts {
-				sqErr := 0
+				sqErrRow := 0.0
 				// sum the rows and find the squared difference from reference
 				for k := range geo.geoRefDims[class][axis][plane].nrows {
 					rowsum := 0
@@ -946,29 +989,42 @@ func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErr
 						rowsum += int(geo.density[plane][k+i][m+j])
 					}
 					diff := geo.geoRefMass[axis][plane].row[k] - rowsum
-					sqErr += diff * diff
+					sqErrRow += float64(diff * diff)
 				}
+				sqErrRow /= normRow
 				// sum the columns and find the squared difference from reference
+				sqErrCol := 0.0
 				for m := range geo.geoRefDims[class][axis][plane].ncols {
 					colsum := 0
 					for k := range geo.geoRefDims[class][axis][plane].nrows {
 						colsum += int(geo.density[plane][k+i][m+j])
 					}
 					diff := geo.geoRefMass[axis][plane].col[m] - colsum
-					sqErr += diff * diff
+					sqErrCol += float64(diff * diff)
 				}
+				sqErrCol /= normCol
+				sqErr := sqErrCol + sqErrRow
 				if float64(sqErr) < minSqErr {
 					minSqErr = float64(sqErr)
 				}
 			}
 		}
-		// normalize square error by the size of the reference
+		// normalize square error by the size of the sum of the square reference masses
 		// send the normalized min square error to caller
-		planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
+		// planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
+		planeErrorChan <- minSqErr
 	case 1:
+		normRow := 0.0
+		for _, dens := range geo.geoRefMass[axis][plane].row {
+			normRow += float64(dens * dens)
+		}
+		normCol := 0.0
+		for _, dens := range geo.geoRefMass[axis][plane].col {
+			normCol += float64(dens * dens)
+		}
 		for i := range rowShifts {
 			for j := range colShifts {
-				sqErr := 0
+				sqErrRow := 0.0
 				// sum the rows and find the squared difference from reference
 				for k := range geo.geoRefDims[class][axis][plane].nrows {
 					rowsum := 0
@@ -976,8 +1032,9 @@ func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErr
 						rowsum += int(geo.density[k+i][plane][m+j])
 					}
 					diff := geo.geoRefMass[axis][plane].row[k] - rowsum
-					sqErr += diff * diff
+					sqErrRow += float64(diff * diff)
 				}
+				sqErrCol := 0.0
 				// sum the columns and find the squared difference from reference
 				for m := range geo.geoRefDims[class][axis][plane].ncols {
 					colsum := 0
@@ -985,20 +1042,30 @@ func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErr
 						colsum += int(geo.density[k+i][plane][m+j])
 					}
 					diff := geo.geoRefMass[axis][plane].col[m] - colsum
-					sqErr += diff * diff
+					sqErrCol += float64(diff * diff)
 				}
+				sqErr := sqErrRow + sqErrCol
 				if float64(sqErr) < minSqErr {
 					minSqErr = float64(sqErr)
 				}
 			}
 		}
-		// normalize square error by the size of the reference
+		// normalize square error by the size of the sum of the square reference masses
 		// send the normalized min square error to caller
-		planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
+		// planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
+		planeErrorChan <- minSqErr
 	case 2:
+		normRow := 0.0
+		for _, dens := range geo.geoRefMass[axis][plane].row {
+			normRow += float64(dens * dens)
+		}
+		normCol := 0.0
+		for _, dens := range geo.geoRefMass[axis][plane].col {
+			normCol += float64(dens * dens)
+		}
 		for i := range rowShifts {
 			for j := range colShifts {
-				sqErr := 0
+				sqErrRow := 0.0
 				// sum the rows and find the squared difference from reference
 				for k := range geo.geoRefDims[class][axis][plane].nrows {
 					rowsum := 0
@@ -1006,25 +1073,30 @@ func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErr
 						rowsum += int(geo.density[k+i][m+j][plane])
 					}
 					diff := geo.geoRefMass[axis][plane].row[k] - rowsum
-					sqErr += diff * diff
+					sqErrRow += float64(diff * diff)
 				}
+				sqErrRow /= normRow
 				// sum the columns and find the squared difference from reference
+				sqErrCol := 0.0
 				for m := range geo.geoRefDims[class][axis][plane].ncols {
 					colsum := 0
 					for k := range geo.geoRefDims[class][axis][plane].nrows {
 						colsum += int(geo.density[k+i][m+j][plane])
 					}
 					diff := geo.geoRefMass[axis][plane].col[m] - colsum
-					sqErr += diff * diff
+					sqErrCol += float64(diff * diff)
 				}
+				sqErrCol /= normCol
+				sqErr := sqErrRow + sqErrCol
 				if float64(sqErr) < minSqErr {
-					minSqErr = float64(sqErr)
+					minSqErr = sqErr
 				}
 			}
 		}
-		// normalize square error by the size of the reference
+		// normalize square error by the size of the sum of the square reference masses
 		// send the normalized min square error to caller
-		planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
+		//planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
+		planeErrorChan <- minSqErr
 	default:
 		fmt.Printf("invalid axis chosen: %d\n", axis)
 	}
@@ -1064,7 +1136,7 @@ func (geo *Geometric) classifyGeometric() error {
 		// generate a geometric object with noise level and shift using geoRefDims
 		ngeometricObj := rand.Intn(classes)
 		geometricObj := geometricObjects[ngeometricObj]
-		geometricObject.CreateObject(geometricObj, geo.noiseLevel, true)
+		geometricObject.CreateObject(geometricObj, geo.noiseLevel, geo.shift)
 
 		// Open the geometric object file containing the densities
 		fgeometric, err := os.Open(filepath.Join(dataDir, geometricobject))
@@ -1086,7 +1158,7 @@ func (geo *Geometric) classifyGeometric() error {
 				_, err := fmt.Fscanf(fgeometric, "%d\n", &geo.density[i][j][planeDim-1])
 				if err != nil {
 					fmt.Printf("Fscanf for densities[%d][%d] newline error: %v\n", i, j, err.Error())
-					return fmt.Errorf("function Fscanf for densities[%d][%d] newline error: %v", i, j, err.Error())
+					return fmt.Errorf("function Fscanf for densities[%d][%d][%d] newline error: %v", i, j, planeDim-1, err.Error())
 				}
 			}
 		}
@@ -1103,10 +1175,10 @@ func (geo *Geometric) classifyGeometric() error {
 			for axes := range geo.geoRefMass {
 				for plane := range geo.geoRefMass[axes] {
 					for m := range geo.geoRefDims[class][axes][plane].nrows {
-						fmt.Fscanf(fgeoref, "%d ", &geo.geoRefMass[axes][plane].row[m])
+						fmt.Fscanf(fgeoref, "%d", &geo.geoRefMass[axes][plane].row[m])
 					}
 					for n := range geo.geoRefDims[class][axes][plane].ncols {
-						fmt.Fscanf(fgeoref, "%d ", &geo.geoRefMass[axes][plane].col[n])
+						fmt.Fscanf(fgeoref, "%d", &geo.geoRefMass[axes][plane].col[n])
 					}
 				}
 			}
@@ -1228,7 +1300,7 @@ func handleGeometricClassification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// insert x-labels and y-labels in PlotT
-	geo.insertLabels()
+	geo.insertLabelsClassification()
 
 	// Execute data on HTML template
 	if err = tmplGeometricClassification.Execute(w, geo.plot); err != nil {
@@ -1240,8 +1312,10 @@ func handleGeometricClassification(w http.ResponseWriter, r *http.Request) {
 func handleGeometricDisplay(w http.ResponseWriter, r *http.Request) {
 
 	var (
-		plot PlotT
-		geo  *Geometric
+		plot       PlotT
+		geo        *Geometric
+		shift      bool = false
+		noiseLevel int
 	)
 
 	// Determine if a new geometric object is wanted
@@ -1269,7 +1343,6 @@ func handleGeometricDisplay(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		txt = r.FormValue("shiftgeometric")
-		shift := false
 		if txt == "shiftgeometric" {
 			shift = true
 		}
@@ -1299,7 +1372,7 @@ func handleGeometricDisplay(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 
 	// create Geometric instance to hold state
-	geo, err = newGeometricDisplay(r, &plot, f)
+	geo, err = newGeometricDisplay(r, &plot, f, shift, noiseLevel)
 	if err != nil {
 		fmt.Printf("newComputedTomography() error: %v\n", err)
 		plot.Status = fmt.Sprintf("newComputedTomography error: %v", err.Error())
