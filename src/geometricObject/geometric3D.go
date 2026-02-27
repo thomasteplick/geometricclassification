@@ -41,12 +41,12 @@ func (geo *GeoObject) addNoiseShift() error {
 	}
 	defer ftemp.Close()
 
-	for i := 0; i < planeDim; i++ {
-		for j := 0; j < planeDim; j++ {
-			for k := 0; k < planeDim; k++ {
+	for i := range planeDim {
+		for j := range planeDim {
+			for k := range planeDim - 1 {
 				fmt.Fprintf(ftemp, "%d ", geo.density[i][j][k])
 			}
-			fmt.Fprintln(ftemp)
+			fmt.Fprintf(ftemp, "%d\n", geo.density[i][j][planeDim-1])
 		}
 	}
 
@@ -54,9 +54,9 @@ func (geo *GeoObject) addNoiseShift() error {
 	ftemp.Seek(0, io.SeekStart)
 
 	// Clear geo.density
-	for i := 0; i < planeDim; i++ {
-		for j := 0; j < planeDim; j++ {
-			for k := 0; k < planeDim; k++ {
+	for i := range planeDim {
+		for j := range planeDim {
+			for k := range planeDim {
 				geo.density[i][j][k] = 0
 			}
 		}
@@ -65,6 +65,7 @@ func (geo *GeoObject) addNoiseShift() error {
 	// Read in density file and place in a shifted position with density noise
 	// Read the geometric object file containing the densities
 	// compute noise and shift
+
 	signi := 1
 	if sign := rand.IntN(2); sign > 0 {
 		signi = -1
@@ -81,15 +82,16 @@ func (geo *GeoObject) addNoiseShift() error {
 	ishift := signi * rand.IntN(planeDim/4)
 	jshift := signj * rand.IntN(planeDim/4)
 	kshift := signk * rand.IntN(planeDim/4)
+
 	deltaI := 0
 	deltaJ := 0
 	deltaK := 0
 	junk := 0
 	for i := range planeDim {
+		deltaI = i + ishift
 		for j := range planeDim {
+			deltaJ = j + jshift
 			for k := range planeDim - 1 {
-				deltaI = i + ishift
-				deltaJ = j + jshift
 				deltaK = k + kshift
 				if (deltaI >= 0 && deltaI < planeDim) && (deltaJ >= 0 && deltaJ < planeDim) &&
 					(deltaK >= 0 && deltaK < planeDim) {
@@ -106,8 +108,6 @@ func (geo *GeoObject) addNoiseShift() error {
 					fmt.Fscanf(ftemp, "%d", &junk)
 				}
 			}
-			deltaI = i + ishift
-			deltaJ = j + jshift
 			deltaK = planeDim - 1 + kshift
 			if (deltaI >= 0 && deltaI < planeDim) && (deltaJ >= 0 && deltaJ < planeDim) &&
 				(deltaK >= 0 && deltaK < planeDim) {
@@ -1595,10 +1595,10 @@ func CreateObject(geometricObject string, noiseLevel int, shift bool) error {
 
 	for i := 0; i < planeDim; i++ {
 		for j := 0; j < planeDim; j++ {
-			for k := 0; k < planeDim; k++ {
+			for k := 0; k < planeDim-1; k++ {
 				fmt.Fprintf(f, "%d ", geo.density[i][j][k])
 			}
-			fmt.Fprintln(f)
+			fmt.Fprintf(f, "%d\n", geo.density[i][j][planeDim-1])
 		}
 	}
 

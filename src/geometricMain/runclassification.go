@@ -954,152 +954,305 @@ func (geo *Geometric) reloadGeometricObject(f *os.File) error {
 	return nil
 }
 
-// get min sq error for this plane
-func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErrorChan chan<- float64) {
+// Find the reference mass plane with the least square error
+func (geo *Geometric) searchPlaneReferences(class int, axis int, plane int, refMassPlane int) float64 {
+	/*  Find the square error between the reference mass and the sample
+		There are five sections to consider:  the section with reference mass (1)
+		and all others (4).  If the reference has no mass, then the squared error
+		is just the square of all the mass in this sample; otherwise take the
+	    difference between the reference and the sample and square it.
+	*/
 
-	// send 0 error if no mass in this plane
-	if geo.geoRefDims[class][axis][plane].nrows == 0 {
-		planeErrorChan <- 0
-		return
+	type SrchBnds struct {
+		rowStart int
+		rowEnd   int
+		colStart int
+		colEnd   int
 	}
 
-	// get the bounds (number of rows and columns) for this plane
-	rowShifts := planeDim - geo.geoRefDims[class][axis][plane].nrows
-	colShifts := planeDim - geo.geoRefDims[class][axis][plane].ncols
+	// get the bounds (number of rows and columns) for this refMass plane
+	nrows := geo.geoRefDims[class][axis][refMassPlane].nrows
+	ncols := geo.geoRefDims[class][axis][refMassPlane].ncols
+	rowShifts := planeDim - nrows
+	colShifts := planeDim - ncols
+
 	minSqErr := math.MaxFloat64
-	// shift the reference over the sample and find the shift having the min sq error
+
+	// shift the reference mass over the sample and find the shift having the min sq error
 	// the allowable number of shifts is determined by the reference bounds
 	switch axis {
 	case 0:
-		normRow := 0.0
-		for _, dens := range geo.geoRefMass[axis][plane].row {
-			normRow += float64(dens * dens)
+		// if no reference plane mass, then error is the square of the row and col sums
+		if nrows == 0 {
+			minSqErr := 0
+			for k := range rowShifts {
+				for m := range colShifts {
+					minSqErr += int(geo.density[plane][k][m] * geo.density[plane][k][m])
+				}
+			}
+			for m := range colShifts {
+				for k := range rowShifts {
+					minSqErr += int(geo.density[plane][k][m] * geo.density[plane][k][m])
+				}
+			}
+			return float64(minSqErr)
 		}
-		normCol := 0.0
-		for _, dens := range geo.geoRefMass[axis][plane].col {
-			normCol += float64(dens * dens)
-		}
+
+		// We have reference plane mass
 		for i := range rowShifts {
 			for j := range colShifts {
-				sqErrRow := 0.0
-				// sum the rows and find the squared difference from reference
-				for k := range geo.geoRefDims[class][axis][plane].nrows {
+				section := [4]SrchBnds{
+					{
+						rowStart: 0,
+						rowEnd:   i,
+						colStart: 0,
+						colEnd:   planeDim,
+					},
+					{
+						rowStart: i,
+						rowEnd:   i + nrows,
+						colStart: 0,
+						colEnd:   j,
+					},
+					{
+						rowStart: i,
+						rowEnd:   i + nrows,
+						colStart: j + ncols,
+						colEnd:   planeDim,
+					},
+					{
+						rowStart: i + nrows,
+						rowEnd:   planeDim,
+						colStart: 0,
+						colEnd:   planeDim,
+					},
+				}
+
+				// These sections are outside the reference mass boundary and
+				// the error only consists of the sample mass
+				sqErr := 0
+				for secn := range section {
+					for row := section[secn].rowStart; row < section[secn].rowEnd; row++ {
+						for col := section[secn].colStart; col < section[secn].colEnd; col++ {
+							sqErr += int(geo.density[plane][row][col] * geo.density[plane][row][col])
+						}
+					}
+				}
+
+				// this section contains reference mass so find the squared difference
+				// between the reference mass and the sample
+				for k := range geo.geoRefDims[class][axis][refMassPlane].nrows {
 					rowsum := 0
-					for m := range geo.geoRefDims[class][axis][plane].ncols {
+					for m := range geo.geoRefDims[class][axis][refMassPlane].ncols {
 						rowsum += int(geo.density[plane][k+i][m+j])
 					}
-					diff := geo.geoRefMass[axis][plane].row[k] - rowsum
-					sqErrRow += float64(diff * diff)
+					diff := geo.geoRefMass[axis][refMassPlane].row[k] - rowsum
+					sqErr += diff * diff
 				}
-				sqErrRow /= normRow
 				// sum the columns and find the squared difference from reference
-				sqErrCol := 0.0
-				for m := range geo.geoRefDims[class][axis][plane].ncols {
+				for m := range geo.geoRefDims[class][axis][refMassPlane].ncols {
 					colsum := 0
-					for k := range geo.geoRefDims[class][axis][plane].nrows {
+					for k := range geo.geoRefDims[class][axis][refMassPlane].nrows {
 						colsum += int(geo.density[plane][k+i][m+j])
 					}
-					diff := geo.geoRefMass[axis][plane].col[m] - colsum
-					sqErrCol += float64(diff * diff)
+					diff := geo.geoRefMass[axis][refMassPlane].col[m] - colsum
+					sqErr += diff * diff
 				}
-				sqErrCol /= normCol
-				sqErr := sqErrCol + sqErrRow
 				if float64(sqErr) < minSqErr {
 					minSqErr = float64(sqErr)
 				}
 			}
 		}
-		// normalize square error by the size of the sum of the square reference masses
-		// send the normalized min square error to caller
-		// planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
-		planeErrorChan <- minSqErr
+		return minSqErr
 	case 1:
-		normRow := 0.0
-		for _, dens := range geo.geoRefMass[axis][plane].row {
-			normRow += float64(dens * dens)
+		// if no reference plane mass, then error is the square of the row and col sums
+		if nrows == 0 {
+			minSqErr := 0
+			for k := range rowShifts {
+				for m := range colShifts {
+					minSqErr += int(geo.density[k][plane][m] * geo.density[plane][k][m])
+				}
+			}
+			for m := range colShifts {
+				for k := range rowShifts {
+					minSqErr += int(geo.density[k][plane][m] * geo.density[plane][k][m])
+				}
+			}
+			return float64(minSqErr)
 		}
-		normCol := 0.0
-		for _, dens := range geo.geoRefMass[axis][plane].col {
-			normCol += float64(dens * dens)
-		}
+
+		// We have reference plane mass
 		for i := range rowShifts {
 			for j := range colShifts {
-				sqErrRow := 0.0
-				// sum the rows and find the squared difference from reference
-				for k := range geo.geoRefDims[class][axis][plane].nrows {
+				section := [4]SrchBnds{
+					{
+						rowStart: 0,
+						rowEnd:   i,
+						colStart: 0,
+						colEnd:   planeDim,
+					},
+					{
+						rowStart: i,
+						rowEnd:   i + nrows,
+						colStart: 0,
+						colEnd:   j,
+					},
+					{
+						rowStart: i,
+						rowEnd:   i + nrows,
+						colStart: j + ncols,
+						colEnd:   planeDim,
+					},
+					{
+						rowStart: i + nrows,
+						rowEnd:   planeDim,
+						colStart: 0,
+						colEnd:   planeDim,
+					},
+				}
+
+				// These sections are outside the reference mass boundary and
+				// the error only consists of the sample mass
+				sqErr := 0
+				for secn := range section {
+					for row := section[secn].rowStart; row < section[secn].rowEnd; row++ {
+						for col := section[secn].colStart; col < section[secn].colEnd; col++ {
+							sqErr += int(geo.density[row][plane][col] * geo.density[row][plane][col])
+						}
+					}
+				}
+
+				// this section contains reference mass so find the squared difference
+				// between the reference mass and the sample
+				for k := range geo.geoRefDims[class][axis][refMassPlane].nrows {
 					rowsum := 0
-					for m := range geo.geoRefDims[class][axis][plane].ncols {
+					for m := range geo.geoRefDims[class][axis][refMassPlane].ncols {
 						rowsum += int(geo.density[k+i][plane][m+j])
 					}
-					diff := geo.geoRefMass[axis][plane].row[k] - rowsum
-					sqErrRow += float64(diff * diff)
+					diff := geo.geoRefMass[axis][refMassPlane].row[k] - rowsum
+					sqErr += diff * diff
 				}
-				sqErrCol := 0.0
 				// sum the columns and find the squared difference from reference
-				for m := range geo.geoRefDims[class][axis][plane].ncols {
+				for m := range geo.geoRefDims[class][axis][refMassPlane].ncols {
 					colsum := 0
-					for k := range geo.geoRefDims[class][axis][plane].nrows {
+					for k := range geo.geoRefDims[class][axis][refMassPlane].nrows {
 						colsum += int(geo.density[k+i][plane][m+j])
 					}
-					diff := geo.geoRefMass[axis][plane].col[m] - colsum
-					sqErrCol += float64(diff * diff)
+					diff := geo.geoRefMass[axis][refMassPlane].col[m] - colsum
+					sqErr += diff * diff
 				}
-				sqErr := sqErrRow + sqErrCol
 				if float64(sqErr) < minSqErr {
 					minSqErr = float64(sqErr)
 				}
 			}
 		}
-		// normalize square error by the size of the sum of the square reference masses
-		// send the normalized min square error to caller
-		// planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
-		planeErrorChan <- minSqErr
+		return minSqErr
 	case 2:
-		normRow := 0.0
-		for _, dens := range geo.geoRefMass[axis][plane].row {
-			normRow += float64(dens * dens)
+		// if no reference plane mass, then error is the square of the row and col sums
+		if nrows == 0 {
+			minSqErr := 0
+			for k := range rowShifts {
+				for m := range colShifts {
+					minSqErr += int(geo.density[k][m][plane] * geo.density[plane][k][m])
+				}
+			}
+			for m := range colShifts {
+				for k := range rowShifts {
+					minSqErr += int(geo.density[k][m][plane] * geo.density[plane][k][m])
+				}
+			}
+			return float64(minSqErr)
 		}
-		normCol := 0.0
-		for _, dens := range geo.geoRefMass[axis][plane].col {
-			normCol += float64(dens * dens)
-		}
+
+		// We have reference plane mass
 		for i := range rowShifts {
 			for j := range colShifts {
-				sqErrRow := 0.0
-				// sum the rows and find the squared difference from reference
-				for k := range geo.geoRefDims[class][axis][plane].nrows {
+				section := [4]SrchBnds{
+					{
+						rowStart: 0,
+						rowEnd:   i,
+						colStart: 0,
+						colEnd:   planeDim,
+					},
+					{
+						rowStart: i,
+						rowEnd:   i + nrows,
+						colStart: 0,
+						colEnd:   j,
+					},
+					{
+						rowStart: i,
+						rowEnd:   i + nrows,
+						colStart: j + ncols,
+						colEnd:   planeDim,
+					},
+					{
+						rowStart: i + nrows,
+						rowEnd:   planeDim,
+						colStart: 0,
+						colEnd:   planeDim,
+					},
+				}
+
+				// These sections are outside the reference mass boundary and
+				// the error only consists of the sample mass
+				sqErr := 0
+				for secn := range section {
+					for row := section[secn].rowStart; row < section[secn].rowEnd; row++ {
+						for col := section[secn].colStart; col < section[secn].colEnd; col++ {
+							sqErr += int(geo.density[row][col][plane] * geo.density[row][col][plane])
+						}
+					}
+				}
+
+				// this section contains reference mass so find the squared difference
+				// between the reference mass and the sample
+				for k := range geo.geoRefDims[class][axis][refMassPlane].nrows {
 					rowsum := 0
-					for m := range geo.geoRefDims[class][axis][plane].ncols {
+					for m := range geo.geoRefDims[class][axis][refMassPlane].ncols {
 						rowsum += int(geo.density[k+i][m+j][plane])
 					}
-					diff := geo.geoRefMass[axis][plane].row[k] - rowsum
-					sqErrRow += float64(diff * diff)
+					diff := geo.geoRefMass[axis][refMassPlane].row[k] - rowsum
+					sqErr += diff * diff
 				}
-				sqErrRow /= normRow
+
 				// sum the columns and find the squared difference from reference
-				sqErrCol := 0.0
-				for m := range geo.geoRefDims[class][axis][plane].ncols {
+				for m := range geo.geoRefDims[class][axis][refMassPlane].ncols {
 					colsum := 0
-					for k := range geo.geoRefDims[class][axis][plane].nrows {
+					for k := range geo.geoRefDims[class][axis][refMassPlane].nrows {
 						colsum += int(geo.density[k+i][m+j][plane])
 					}
-					diff := geo.geoRefMass[axis][plane].col[m] - colsum
-					sqErrCol += float64(diff * diff)
+					diff := geo.geoRefMass[axis][refMassPlane].col[m] - colsum
+					sqErr += diff * diff
 				}
-				sqErrCol /= normCol
-				sqErr := sqErrRow + sqErrCol
+
 				if float64(sqErr) < minSqErr {
-					minSqErr = sqErr
+					minSqErr = float64(sqErr)
 				}
 			}
 		}
-		// normalize square error by the size of the sum of the square reference masses
-		// send the normalized min square error to caller
-		//planeErrorChan <- minSqErr / float64(geo.geoRefDims[class][axis][plane].nrows*geo.geoRefDims[class][axis][plane].ncols)
-		planeErrorChan <- minSqErr
+		return minSqErr
 	default:
 		fmt.Printf("invalid axis chosen: %d\n", axis)
+		return 0.0
 	}
+}
+
+// get min sq error for this plane
+func (geo *Geometric) getPlaneMassError(class int, axis int, plane int, planeErrorChan chan<- float64) {
+
+	/*
+		Loop over all geoRefMass planes for this class, axis, and plane.  Call searchPlaneReferences()
+		to find minimum square error.
+	*/
+	minSqErr := math.MaxFloat64
+	for refMassPlane := range planeDim {
+		sqErr := geo.searchPlaneReferences(class, axis, plane, refMassPlane)
+		if sqErr < minSqErr {
+			minSqErr = sqErr
+		}
+	}
+	planeErrorChan <- minSqErr
 }
 
 // compute min square error for all planes in this axis and return via channel
@@ -1174,11 +1327,24 @@ func (geo *Geometric) classifyGeometric() error {
 			}
 			for axes := range geo.geoRefMass {
 				for plane := range geo.geoRefMass[axes] {
-					for m := range geo.geoRefDims[class][axes][plane].nrows {
-						fmt.Fscanf(fgeoref, "%d", &geo.geoRefMass[axes][plane].row[m])
+					nrows := geo.geoRefDims[class][axes][plane].nrows
+					if nrows == 1 {
+						fmt.Fscanf(fgeoref, "%d\n", &geo.geoRefMass[axes][plane].row[0])
+					} else if nrows > 1 {
+						for m := range nrows - 1 {
+							fmt.Fscanf(fgeoref, "%d", &geo.geoRefMass[axes][plane].row[m])
+						}
+						fmt.Fscanf(fgeoref, "%d\n", &geo.geoRefMass[axes][plane].row[nrows-1])
 					}
-					for n := range geo.geoRefDims[class][axes][plane].ncols {
-						fmt.Fscanf(fgeoref, "%d", &geo.geoRefMass[axes][plane].col[n])
+
+					ncols := geo.geoRefDims[class][axes][plane].ncols
+					if ncols == 1 {
+						fmt.Fscanf(fgeoref, "%d\n", &geo.geoRefMass[axes][plane].col[0])
+					} else if ncols > 1 {
+						for n := range ncols - 1 {
+							fmt.Fscanf(fgeoref, "%d", &geo.geoRefMass[axes][plane].col[n])
+						}
+						fmt.Fscanf(fgeoref, "%d\n", &geo.geoRefMass[axes][plane].col[ncols-1])
 					}
 				}
 			}
