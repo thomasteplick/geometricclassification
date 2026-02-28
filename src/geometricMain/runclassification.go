@@ -1304,14 +1304,14 @@ func (geo *Geometric) classifyGeometric() error {
 				for k := range planeDim - 1 {
 					_, err := fmt.Fscanf(fgeometric, "%d", &geo.density[i][j][k])
 					if err != nil {
-						fmt.Printf("Fscanf for densities[%d][%d][%d] error: %v\n", i, j, k, err.Error())
-						return fmt.Errorf("function Fscanf for densities[%d][%d][%d] error: %v", i, j, k, err.Error())
+						fmt.Printf("Fscanf 1 for densities[%d][%d][%d] error: %v\n", i, j, k, err.Error())
+						return fmt.Errorf("function Fscanf 1 for densities[%d][%d][%d] error: %v", i, j, k, err.Error())
 					}
 				}
 				_, err := fmt.Fscanf(fgeometric, "%d\n", &geo.density[i][j][planeDim-1])
 				if err != nil {
-					fmt.Printf("Fscanf for densities[%d][%d] newline error: %v\n", i, j, err.Error())
-					return fmt.Errorf("function Fscanf for densities[%d][%d][%d] newline error: %v", i, j, planeDim-1, err.Error())
+					fmt.Printf("Fscanf 2 for densities[%d][%d] newline error: %v\n", i, j, err.Error())
+					return fmt.Errorf("function Fscanf 2 for densities[%d][%d][%d] newline error: %v", i, j, planeDim-1, err.Error())
 				}
 			}
 		}
