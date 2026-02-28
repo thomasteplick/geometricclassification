@@ -7,8 +7,8 @@ create the web page. Start the web server at bin\geometricClassify.exe and conne
 at http://127.0.0.1:8080/geometricclassification. 
 Geometric Classification classifies the internal structure of 3D geometric objects
 such as ellipsoids, parabloids, cubes, boxes, planes, lemniscates, cardiods, four-leaf rose, or cones.
-It slices thegeometric objects along axial planes in the Cartesian coordinate system.
- The object can be solids as well as surfaces.
+It slices the geometric objects along axial planes in the Cartesian coordinate system.
+The object can be solids as well as surfaces.
 It gives an overview of the planes in i, j, k axes along with the option
 of zooming in on a particular axial plane.  It is possible to select and
 view particular planes in the geometric object with different step sizes.
