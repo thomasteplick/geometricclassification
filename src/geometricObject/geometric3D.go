@@ -97,8 +97,8 @@ func (geo *GeoObject) addNoiseShift() error {
 					(deltaK >= 0 && deltaK < planeDim) {
 					_, err := fmt.Fscanf(ftemp, "%d", &geo.density[deltaI][deltaJ][deltaK])
 					if err != nil {
-						fmt.Printf("Fscanf for density[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
-						return fmt.Errorf("function Fscanf for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
+						fmt.Printf("Fscanf 1 for density[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
+						return fmt.Errorf("function Fscanf 1 for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
 					}
 					// add noise, (+/-)noiseLevel/2
 					noise := float64(geo.noiseLevel) * (rand.Float64() - 0.5)
@@ -113,8 +113,8 @@ func (geo *GeoObject) addNoiseShift() error {
 				(deltaK >= 0 && deltaK < planeDim) {
 				_, err := fmt.Fscanf(ftemp, "%d\n", &geo.density[deltaI][deltaJ][deltaK])
 				if err != nil {
-					fmt.Printf("Fscanf for density[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
-					return fmt.Errorf("function Fscanf for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
+					fmt.Printf("Fscanf 2 for density[%d][%d][%d] error: %v\n", deltaI, deltaJ, deltaK, err.Error())
+					return fmt.Errorf("function Fscanf 2 for density[%d][%d][%d] error: %v", deltaI, deltaJ, deltaK, err.Error())
 				}
 				// add noise, (+/-)noiseLevel/2
 				noise := float64(geo.noiseLevel) * (rand.Float64() - 0.5)
@@ -292,12 +292,11 @@ func (geo *GeoObject) createLemniscateRevolution() {
 	// use 1/2 degree resolution
 	del := math.Pi / 360.0
 	var black byte = 9
-	K := math.Sqrt(2)
 	// loop over theta, 0<=theta<45, and use symmetry to find other values
 	theta := 0.0
 	for range 90 {
 		// calculate r
-		r := K * float64(a) * math.Sqrt(math.Cos(2.0*theta))
+		r := float64(a) * math.Sqrt(math.Cos(2.0*theta))
 		// calculate x=r*cos(theta), first quadrant, use symmetry for others
 		x := r * math.Cos(theta)
 		// calculate h=r*sin(theta)
@@ -307,8 +306,8 @@ func (geo *GeoObject) createLemniscateRevolution() {
 		for range 180 {
 			// z=h*sin(phi), for (+/-) phi
 			// y=h*cos(phi), for (+/-) phi
-			z := K * h * math.Sin(phi)
-			y := K * h * math.Cos(phi)
+			z := h * math.Sin(phi)
+			y := h * math.Cos(phi)
 			// calculate density for (+/-) theta and phi
 			// translate (x,y,z) to (0,planeDim) with planeDim/2
 			geo.density[y1+int(y)][z1+int(z)][int(x)+x1] = black
@@ -347,14 +346,13 @@ func (geo *GeoObject) createLemniscateRevolutionSolid() {
 	x1 := planeDim / 2
 	y1 := planeDim / 2
 	z1 := planeDim / 2
-	a := x1 / 2
+	a := 3 * x1 / 4
 	// use one degree resolution
 	del := math.Pi / 180.0
 	black := 9.0
 	nrsteps := 3
 	rstep := 1.0 / float64(nrsteps)
-	K := math.Sqrt(2)
-	norm := K * float64(a)
+	norm := float64(a)
 	var density byte
 	for i := a; i > 0; i-- {
 		// loop over theta, 0<=theta<45, and use symmetry to find other values
@@ -363,7 +361,7 @@ func (geo *GeoObject) createLemniscateRevolutionSolid() {
 			for n := range nrsteps {
 				// calculate r
 				k := float64(i) - float64(n)*rstep
-				r := K * k * math.Sqrt(math.Cos(2.0*theta))
+				r := k * math.Sqrt(math.Cos(2.0*theta))
 				// calculate x=r*cos(theta), first quadrant, use symmetry for others
 				x := r * math.Cos(theta)
 				// calculate h=r*sin(theta)
@@ -414,7 +412,6 @@ func (geo *GeoObject) createRose4LeafRevolution() {
 	x1 := planeDim / 2
 	y1 := planeDim / 2
 	z1 := planeDim / 2
-	a := x1
 	// one degree resolution
 	del := math.Pi / 180.0
 	var black byte = 9
@@ -422,7 +419,7 @@ func (geo *GeoObject) createRose4LeafRevolution() {
 	theta := 0.0
 	for range 90 {
 		// calculate r
-		r := float64(a) * math.Sin(2.0*theta)
+		r := float64(3*x1/4) * math.Sin(2.0*theta)
 		// calculate x=r*cos(theta), first quadrant, use symmetry for others
 		x := r * math.Cos(theta)
 		// calculate h=r*sin(theta)
@@ -462,7 +459,7 @@ func (geo *GeoObject) createRose4LeafRevolutionSolid() {
 	x1 := planeDim / 2
 	y1 := planeDim / 2
 	z1 := planeDim / 2
-	a := x1
+	a := 3 * x1 / 4
 	// one degree resolution
 	del := math.Pi / 180.0
 	black := 9.0
