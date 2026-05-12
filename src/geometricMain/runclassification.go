@@ -113,7 +113,6 @@ type Geometric struct {
 	noiseLevel        int            // noise level in the samples
 	shift             bool           // shift the geometric object
 	statistics        Stats
-	fmass             *os.File // file handle for reference masses
 }
 
 // Type to hold the minimum and maximum data values
@@ -250,7 +249,7 @@ func newGeometricClassification(r *http.Request, plot *PlotT, nsamples int) (*Ge
 		statistics: Stats{
 			correct:    make([]int, classes),
 			classCount: make([]int, classes)},
-		geoRefMass: planeMass,
+		geoRe: planeMass,
 		geoRefDims: planeDims,
 	}
 
@@ -1427,8 +1426,6 @@ func handleGeometricClassification(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	defer geo.fmass.Close()
-
 	// generate samples and classify using the noise level and shift
 	err = geo.classifyGeometric()
 	if err != nil {
