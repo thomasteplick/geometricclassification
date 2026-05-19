@@ -1069,12 +1069,12 @@ func (geo *Geometric) searchPlaneReferences(class int, axis int, plane int, refM
 			minSqErr := 0
 			for k := range rowShifts {
 				for m := range colShifts {
-					minSqErr += int(geo.density[k][plane][m] * geo.density[plane][k][m])
+					minSqErr += int(geo.density[k][plane][m] * geo.density[k][plane][m])
 				}
 			}
 			for m := range colShifts {
 				for k := range rowShifts {
-					minSqErr += int(geo.density[k][plane][m] * geo.density[plane][k][m])
+					minSqErr += int(geo.density[k][plane][m] * geo.density[k][plane][m])
 				}
 			}
 			return float64(minSqErr)
@@ -1152,12 +1152,12 @@ func (geo *Geometric) searchPlaneReferences(class int, axis int, plane int, refM
 			minSqErr := 0
 			for k := range rowShifts {
 				for m := range colShifts {
-					minSqErr += int(geo.density[k][m][plane] * geo.density[plane][k][m])
+					minSqErr += int(geo.density[k][m][plane] * geo.density[k][m][plane])
 				}
 			}
 			for m := range colShifts {
 				for k := range rowShifts {
-					minSqErr += int(geo.density[k][m][plane] * geo.density[plane][k][m])
+					minSqErr += int(geo.density[k][m][plane] * geo.density[k][m][plane])
 				}
 			}
 			return float64(minSqErr)
