@@ -1494,7 +1494,7 @@ func (geo *GeoObject) createGeometricReferences() error {
 				sum = 0
 				for row := range planeDim {
 					// sum each col density and write to file geometricrefmass on the same line with a space between
-					sum += int(geo.density[plane][row][col])
+					sum += int(geo.density[row][col][plane])
 				}
 				fmt.Fprintf(fclass, "%d ", sum)
 			}
