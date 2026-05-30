@@ -1534,18 +1534,18 @@ func CreateObject(geometricObject string, noiseLevel int, shift bool) error {
 
 	// determine the geometric surface/solid
 	switch geometricObject {
-	case "plane":
-		geo.createPlane()
-	case "cube":
-		geo.createCube()
 	case "ellipsoidsurface":
 		geo.createEllipsoid()
 	case "ellipsoidsolid":
 		geo.createEllipsoidSolid()
+	case "plane":
+		geo.createPlane()
 	case "paraboloid":
 		geo.createParaboloid()
 	case "paraboloidsolid":
 		geo.createParaboloidSolid()
+	case "cube":
+		geo.createCube()
 	case "cone":
 		geo.createCone()
 	case "conesolid":
@@ -1581,7 +1581,7 @@ func CreateObject(geometricObject string, noiseLevel int, shift bool) error {
 		fmt.Printf("create geometric object unknown case: '%s'\n", geometricObject)
 		return fmt.Errorf("create geometric object unknown case %s", geometricObject)
 	}
-
+	
 	// Save geometric object
 	f, err := os.Create(filepath.Join(dataDir, geometricobject))
 	if err != nil {
